@@ -381,7 +381,6 @@ class TerrainManager:
             "rock": rock_mesh_path
         }
 
-
         # Terrain Parameters
         self.heightmap = None
 

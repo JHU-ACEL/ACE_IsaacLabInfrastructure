@@ -16,7 +16,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from isaaclab.terrains import TerrainImporterCfg
-from .terrain_utils.terrain_importer import RoverTerrainImporter
+#from .terrain_utilities.terrain_importer import RoverTerrainImporter
 
 
 
@@ -47,9 +47,8 @@ class MarsTerrainSceneCfg(InteractiveSceneCfg):
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
     )
 
-        # Ground Terrain
+    # Ground Terrain
     terrain = TerrainImporterCfg(
-        class_type=RoverTerrainImporter,
         prim_path="/World/terrain",
         terrain_type="usd",
         collision_group=-1,
@@ -58,38 +57,36 @@ class MarsTerrainSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class JackalEnvCfg(DirectRLEnvCfg):
-    # env
-    decimation = 2
-    episode_length_s = 4.0
-    # - spaces definition
-    action_space = 4
-    # observation_space = 9
-    #observation_space = 3
-    state_space = 0
+
+    episode_length_s = 10.0
+
     # simulation
+    decimation = 2
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
+
     # robot(s)
     robot_cfg: ArticulationCfg = JACKAL_CONFIG.replace(prim_path="/World/envs/env_.*/Robot")
 
-    # camera
-    # tiled_camera: TiledCameraCfg = TiledCameraCfg(
-    #     prim_path="/World/envs/env_.*/Robot/chassis/rgb_camera/jetbot_camera",
-    #     #offset=TiledCameraCfg.OffsetCfg(pos=(-5.0, 0.0, 2.0), rot=(1.0, 0.0, 0.0, 0.0), convention="world"),
-    #     data_types=["rgb"],
-    #     spawn=None,
-    #     width=224,
-    #     height=224,
-    # )
+    
+    # sensors
+    tiled_camera: TiledCameraCfg = TiledCameraCfg(
+        prim_path="/World/envs/env_.*/Robot/base_link/bumblebee_stereo_camera_frame/bumblebee_stereo_right_frame/bumblebee_stereo_right_camera",
+        #offset=TiledCameraCfg.OffsetCfg(pos=(-5.0, 0.0, 2.0), rot=(1.0, 0.0, 0.0, 0.0), convention="world"),
+        data_types=["rgb"],
+        spawn=None,
+        width=224,
+        height=224,
+    )
 
-    #goal_cfg = RigidObjectCfg(prim_path="/World/envs/env_.*/marker", spawn=sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/red_block.usd", scale = (3.0, 3.0, 3.0)), init_state=RigidObjectCfg.InitialStateCfg(pos=(2.1,-.3,0)))
 
+    # - spaces definition
+    state_space = 0
+    action_space = 4
     #observation_space = [5, tiled_camera.height, tiled_camera.width, 3]
-    #observation_space = [tiled_camera.height, tiled_camera.width, 3]
-
-
-    observation_space = 3
+    observation_space = [tiled_camera.height, tiled_camera.width, 3]
 
     # scene
-    scene: MarsTerrainSceneCfg = MarsTerrainSceneCfg(num_envs=100, env_spacing=5.0, replicate_physics=True)
-    #scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=5.0, replicate_physics=True)
+    #scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=100, env_spacing=5.0, replicate_physics=True)
+    scene: MarsTerrainSceneCfg = MarsTerrainSceneCfg(num_envs=20, env_spacing=1.0, replicate_physics=True)
+
     dof_names = ['front_left_wheel_joint', 'front_right_wheel_joint', 'rear_left_wheel_joint', 'rear_right_wheel_joint']
