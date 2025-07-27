@@ -58,7 +58,7 @@ class MarsTerrainSceneCfg(InteractiveSceneCfg):
 @configclass
 class JackalEnvCfg(DirectRLEnvCfg):
 
-    episode_length_s = 10.0
+    episode_length_s = 3.0
 
     # simulation
     decimation = 2
@@ -85,8 +85,10 @@ class JackalEnvCfg(DirectRLEnvCfg):
     #observation_space = [5, tiled_camera.height, tiled_camera.width, 3]
     observation_space = [tiled_camera.height, tiled_camera.width, 3]
 
+    # goal_cfg = RigidObjectCfg(prim_path="/World/envs/env_.*/marker", spawn=sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/green_block.usd", scale = (5.0, 5.0, 5.0)))
+
     # scene
     #scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=100, env_spacing=5.0, replicate_physics=True)
-    scene: MarsTerrainSceneCfg = MarsTerrainSceneCfg(num_envs=20, env_spacing=1.0, replicate_physics=True)
+    scene: MarsTerrainSceneCfg = MarsTerrainSceneCfg(num_envs=50, env_spacing=1.0, replicate_physics=True)
 
     dof_names = ['front_left_wheel_joint', 'front_right_wheel_joint', 'rear_left_wheel_joint', 'rear_right_wheel_joint']

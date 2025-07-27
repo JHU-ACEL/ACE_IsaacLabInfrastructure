@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import torch
 from collections.abc import Sequence
+import numpy as np
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, RigidObject, RigidObjectCfg, AssetBaseCfg, AssetBase
@@ -28,7 +29,7 @@ from .terrain_utilities.terrain_utils import TerrainManager
 SPHERE_MARKER_CFG = VisualizationMarkersCfg(
     markers={
         "sphere": sim_utils.SphereCfg(
-            radius=0.2,
+            radius=0.3,
             visual_material=sim_utils.PreviewSurfaceCfg(
                 diffuse_color=(1.0, 0.0, 0.0)),
         ),
@@ -48,8 +49,12 @@ class JackalEnv(DirectRLEnv):
 
     def _setup_scene(self):
 
+        # Device
+        self.gpu = "cuda:0"
+
         # Scene Assets and Sensors
         self.robot = Articulation(self.cfg.robot_cfg)
+        #self.goal_marker = RigidObject(self.cfg.goal_cfg)
         self.robot_camera = TiledCamera(self.cfg.tiled_camera)
 
         # add ground plane
@@ -60,6 +65,7 @@ class JackalEnv(DirectRLEnv):
 
         # Update the scene's attributes
         self.scene.articulations["robot"] = self.robot
+        #self.scene.rigid_objects["goal_marker"] = self.goal_marker
         self.scene.sensors["tiled_camera"] = self.robot_camera
 
         # add lights
@@ -70,28 +76,31 @@ class JackalEnv(DirectRLEnv):
         # Terrain Manager
         self.terrainManager = TerrainManager(
             num_envs=self.cfg.scene.num_envs, 
-            device="cuda:0",
+            device=self.gpu,
             # terrain_usd_path = "/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_only.usd",
             # rock_usd_path = "/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/rocks_merged.usd",
         )
         self.valid_spawns = self.terrainManager.spawn_locations
-        #self.target_spawns = torch.zeros(self.cfg.scene.num_envs, 3).cuda()
+        #self.heightmap: np.ndarray = self.terrainManager._heightmap_manager.heightmap
 
         # Goal Marker Initialization
         sphere_cfg = SPHERE_MARKER_CFG.copy()
         sphere_cfg.prim_path = "/Visuals/Command/position_goal"
         self.sphere_marker = VisualizationMarkers(cfg=sphere_cfg)
         self.sphere_marker.set_visibility(True)
-        self.marker_radius = 7.0
-        self.target_spawns = torch.zeros(self.cfg.scene.num_envs, 3, device="cuda:0")
-
-        # self.target_position = torch.zeros(self.cfg.scene.num_envs, 3).cuda()
+        self.marker_radius = 2.0
+        self.target_spawns = torch.zeros(self.cfg.scene.num_envs, 3, device=self.gpu)
 
     def _visualize_markers(self):
-        pass
+        
+        all_envs = torch.arange(self.cfg.scene.num_envs)
+        indices = torch.hstack((torch.zeros_like(all_envs), torch.ones_like(all_envs)))
+
+        self.sphere_marker.visualize(self.target_spawns, marker_indices=indices)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        self.actions = actions.clone()
+        self.actions = 2*actions.clone()
+        self._visualize_markers()
 
     def _apply_action(self) -> None:
         self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
@@ -132,45 +141,39 @@ class JackalEnv(DirectRLEnv):
         self.robot.write_root_state_to_sim(default_root_state, env_ids)
 
 
-
-        device="cuda:0"
+        targets = torch.zeros(self.cfg.scene.num_envs, 3, device=self.gpu)
+        angles = torch.rand(len(env_ids), device=self.gpu) * 2 * math.pi
         root_pos = default_root_state[:, :3]  # Shape [N_envs, 3]
-        
-        # 3) initialize a candidate tensor of targets
-        N = len(env_ids)
-        targets = torch.zeros_like(root_pos, device=device)
-
-
-        # 4) first random draw on the circle
-        angles = torch.rand(N, device=device) * 2 * math.pi
+        #root_pos[:,2] += 0.5
         targets[:, 0] = root_pos[:, 0] + self.marker_radius * torch.cos(angles)
         targets[:, 1] = root_pos[:, 1] + self.marker_radius * torch.sin(angles)
-        targets[:, 2] = root_pos[:, 2]
-        env_ids_tensor = torch.tensor(env_ids, dtype=torch.long, device=device)
+        targets[:, 2] = self.terrainManager._heightmap_manager.get_height_at(targets[:, :2]) 
+        targets[:, 2] += 0.5
 
         while True:
-            bad_envs, num_bad = self.terrainManager.check_if_target_is_valid(
-                env_ids_tensor, targets, device=device
+
+            invalid_ids, num_bad = self.terrainManager.check_if_target_is_valid(
+                env_ids, targets, device=self.gpu
             )
 
             if num_bad == 0:
                 break
 
-            # build a mask of which rows to re-sample
-            # for each row i, True if env_ids_tensor[i] is in bad_envs
-            mask = (env_ids_tensor.unsqueeze(1) == bad_envs.unsqueeze(0)).any(dim=1)
+            # Re-sample the environments that need to be reset, identified by invalid_ids
+            new_angles = torch.rand(num_bad, device=self.gpu) * 2 * math.pi
+            new_targets = targets[invalid_ids]
+            original_root = root_pos[invalid_ids]
+            new_targets[:, 0] = original_root[:, 0] + self.marker_radius * torch.cos(new_angles)
+            new_targets[:, 1] = original_root[:, 1] + self.marker_radius * torch.sin(new_angles)
+            new_targets[:, 2] = original_root[:, 2]
+            targets[invalid_ids] = new_targets
 
-            # re-sample angles for only the bad ones
-            n_bad = mask.sum()
-            new_angles = torch.rand(n_bad, device=device) * 2 * math.pi
 
-            # re-generate those rows
-            row_idx = mask.nonzero(as_tuple=True)[0]
-            targets[row_idx, 0] = root_pos[row_idx, 0] + self.marker_radius * torch.cos(new_angles)
-            targets[row_idx, 1] = root_pos[row_idx, 1] + self.marker_radius * torch.sin(new_angles)
-            targets[row_idx, 2] = root_pos[row_idx, 2]
-            # loop again until no bad targets remain
+        self.target_spawns[env_ids] = targets[env_ids]
+        self._visualize_markers()
 
-        # 6) write the fully validated targets back into your env-wide tensor
-        #    (torch indexing with a Python list works too)
-        self.target_spawns[env_ids] = targets
+        # goal_root_state = self.goal_marker.data.default_root_state[env_ids].clone()
+        # goal_root_state[:, :3] = targets[env_ids]
+        # self.goal_marker.write_root_state_to_sim(goal_root_state, env_ids)
+
+
