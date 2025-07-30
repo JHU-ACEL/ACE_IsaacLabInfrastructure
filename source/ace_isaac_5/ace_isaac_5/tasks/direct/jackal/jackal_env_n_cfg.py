@@ -20,43 +20,8 @@ from isaaclab.terrains import TerrainImporterCfg
 
 
 
-
 @configclass
-class MarsTerrainSceneCfg(InteractiveSceneCfg):
-    """
-    Mars Terrain Scene Configuration
-    """
-    # Hidden Terrain (merged terrain of ground and obstacles) for raycaster.
-    # This is done because the raycaster doesn't work with multiple meshes
-    hidden_terrain = AssetBaseCfg(
-        prim_path="/World/terrain/hidden_terrain",
-        spawn=sim_utils.UsdFileCfg(
-            visible=False,
-            usd_path="source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_merged.usd"
-        ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
-    )
-
-    # Obstacles
-    obstacles = AssetBaseCfg(
-        prim_path="/World/terrain/obstacles",
-        spawn=sim_utils.UsdFileCfg(
-            visible=True,
-            usd_path="/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/rocks_merged.usd"
-        ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
-    )
-
-    # Ground Terrain
-    terrain = TerrainImporterCfg(
-        prim_path="/World/terrain",
-        terrain_type="usd",
-        collision_group=-1,
-        usd_path="/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_only.usd"
-    )
-
-@configclass
-class JackalEnvCfg(DirectRLEnvCfg):
+class JackalEnvNCfg(DirectRLEnvCfg):
 
     episode_length_s = 10.0
 
@@ -85,10 +50,9 @@ class JackalEnvCfg(DirectRLEnvCfg):
     observation_space = [5, tiled_camera.height, tiled_camera.width, 3]
     #observation_space = [tiled_camera.height, tiled_camera.width, 3]
 
-    # goal_cfg = RigidObjectCfg(prim_path="/World/envs/env_.*/marker", spawn=sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/green_block.usd", scale = (5.0, 5.0, 5.0)))
-
     # scene
-    #scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=100, env_spacing=5.0, replicate_physics=True)
-    scene: MarsTerrainSceneCfg = MarsTerrainSceneCfg(num_envs=80, env_spacing=1.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=80, env_spacing=30.0, replicate_physics=True)
 
+
+    goal_cfg = RigidObjectCfg(prim_path="/World/envs/env_.*/marker", spawn=sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/red_block.usd", scale = (6.0, 6.0, 10.0)))
     dof_names = ['front_left_wheel_joint', 'front_right_wheel_joint', 'rear_left_wheel_joint', 'rear_right_wheel_joint']

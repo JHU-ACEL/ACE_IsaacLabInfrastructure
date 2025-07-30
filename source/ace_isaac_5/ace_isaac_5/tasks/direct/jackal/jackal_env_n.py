@@ -21,7 +21,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 import isaaclab.utils.math as math_utils
 
 
-from .jackal_env_cfg import JackalEnvCfg
+from .jackal_env_n_cfg import JackalEnvNCfg
 
 from .terrain_utilities.terrain_utils import TerrainManager
 
@@ -58,10 +58,10 @@ def define_markers() -> VisualizationMarkers:
 
 
 
-class JackalEnv(DirectRLEnv):
-    cfg: JackalEnvCfg
+class JackalEnvN(DirectRLEnv):
+    cfg: JackalEnvNCfg
 
-    def __init__(self, cfg: JackalEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: JackalEnvNCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         self.dof_idx, _ = self.robot.find_joints(self.cfg.dof_names)
@@ -71,13 +71,14 @@ class JackalEnv(DirectRLEnv):
 
     def _get_goal_vec_normalized(self):
     
-        goal_vec = self.target_spawns - self.robot.data.root_pos_w  
+        goal_vec = self.goal_marker.data.root_pos_w - self.robot.data.root_pos_w  
         return goal_vec/torch.linalg.norm(goal_vec, dim=-1, keepdim=True)
 
 
     def _update_marker_yaws(self):
 
         self.commands = self._get_goal_vec_normalized()
+
         ratio = self.commands[:,1]/(self.commands[:,0]+1E-8)
         gzero = torch.where(self.commands > 0, True, False)
         lzero = torch.where(self.commands < 0, True, False)
@@ -94,44 +95,27 @@ class JackalEnv(DirectRLEnv):
 
         # Scene Assets and Sensors
         self.robot = Articulation(self.cfg.robot_cfg)
-        #self.goal_marker = RigidObject(self.cfg.goal_cfg)
+        self.goal_marker = RigidObject(self.cfg.goal_cfg)
         self.robot_camera = TiledCamera(self.cfg.tiled_camera)
 
         # add ground plane
-        #spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg(size=(10000.0, 10000.0)))
 
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
 
-        # Update the scene's attributes
+        # Add sensors and articulations to scene
         self.scene.articulations["robot"] = self.robot
-        #self.scene.rigid_objects["goal_marker"] = self.goal_marker
+        self.scene.rigid_objects["goal_marker"] = self.goal_marker
         self.scene.sensors["tiled_camera"] = self.robot_camera
 
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
-
-        # Terrain Manager
-        self.terrainManager = TerrainManager(
-            num_envs=self.cfg.scene.num_envs, 
-            device=self.gpu,
-            # terrain_usd_path = "/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_only.usd",
-            # rock_usd_path = "/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/rocks_merged.usd",
-        )
-        self.valid_spawns = self.terrainManager.spawn_locations
-
-        # Goal Marker Initialization
-        sphere_cfg = SPHERE_MARKER_CFG.copy()
-        sphere_cfg.prim_path = "/Visuals/Command/position_goal"
-        self.sphere_marker = VisualizationMarkers(cfg=sphere_cfg)
-        self.sphere_marker.set_visibility(True)
-        self.marker_radius = 2.0
-        self.target_spawns = torch.zeros(self.cfg.scene.num_envs, 3, device=self.gpu)
-
         # Arrow Markers Initialization (For Debugging/Visualization Purposes)
         self.arrows = define_markers()
+        self.marker_radius = 1.5
 
         self.up_dir = torch.tensor([0.0, 0.0, 1.0]).cuda()  
         self.yaws = torch.zeros((self.cfg.scene.num_envs, 1)).cuda()
@@ -165,7 +149,7 @@ class JackalEnv(DirectRLEnv):
         rots = torch.vstack((self.forward_marker_orientations, self.command_marker_orientations))
 
         self.arrows.visualize(loc, rots, marker_indices=indices)
-        self.sphere_marker.visualize(self.target_spawns, marker_indices=indices)
+        #self.sphere_marker.visualize(self.target_spawns, marker_indices=indices)
 
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
@@ -176,20 +160,13 @@ class JackalEnv(DirectRLEnv):
         self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
 
     def _get_observations(self) -> dict:
-        
-        # camera_data = self.robot_camera.data.output["rgb"] / 255.0
-        # # normalize the camera data for better training results
-        # mean_tensor = torch.mean(camera_data, dim=(1, 2), keepdim=True)
-        # camera_data -= mean_tensor
-
-        # return {"policy": camera_data.clone()}
 
         camera_data = self.robot_camera.data.output["rgb"] / 255.0
         # normalize the camera data for better training results
         mean_tensor = torch.mean(camera_data, dim=(1, 2), keepdim=True)
         camera_data -= mean_tensor
 
-        # 2) on first call, fill history with the current frame
+        # On first call, fill history with the current frame
         if self._camera_hist is None:
             # repeat the first frame history_len times
 
@@ -197,7 +174,6 @@ class JackalEnv(DirectRLEnv):
             camera_data = camera_data.repeat(1, self.history_len, 1, 1, 1)
             self._camera_hist = camera_data
 
-            #self._camera_hist = camera_data.unsqueeze(1).repeat(1, self.history_len, 1, 1, 1)
         else:
             # drop oldest frame and append newest
             # _camera_hist[:, 1:] are t-3…t, so cat with new frame at dim=1
@@ -208,88 +184,52 @@ class JackalEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
 
+        # alignment
         forward_reward = self.robot.data.root_com_lin_vel_b[:,0].reshape(-1,1)
         forwards = math_utils.quat_apply(self.robot.data.root_link_quat_w, self.robot.data.FORWARD_VEC_B)
         alignment_reward = torch.sum(forwards * self.commands, dim=-1, keepdim=True)
 
-
-        # arrival bonus and distance penalty
-        goal_vec =  self.target_spawns - self.robot.data.root_pos_w  
+        # arrival bonus
+        goal_vec = self._get_goal_vec_normalized()
         dist = torch.linalg.norm(goal_vec, dim=-1, keepdim=True)  # (N,1)
-        arrived = (dist < 0.2).to(torch.float32) * 2.0
-        #dist_penalty = -0.1 * dist
+        arrived = (dist < 0.75).to(torch.float32) * 2.0
 
-        total_reward = forward_reward*torch.exp(alignment_reward) + arrived 
+        total_reward = forward_reward*torch.exp(5*alignment_reward)# + arrived 
 
         return total_reward
 
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        time_out = self.episode_length_buf >= self.max_episode_length - 1
+
+        time_out = self.episode_length_buf >= (self.max_episode_length - 1)
+
+        # goal_vec = self._get_goal_vec_normalized()
+        # dist = torch.linalg.norm(goal_vec, dim=-1)      
+        # arrived = dist < 0.1                                
 
         return False, time_out
+
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
         super()._reset_idx(env_ids)
 
-        # default_root_state = self.robot.data.default_root_state[env_ids]
-        # default_root_state[:, :3] += self.scene.env_origins[env_ids]
+        default_root_state = self.robot.data.default_root_state[env_ids]
+        default_root_state[:, :3] += self.scene.env_origins[env_ids]
 
-        # self.robot.write_root_state_to_sim(default_root_state, env_ids)
-
-        default_root_state = self.robot.data.default_root_state[env_ids].clone()
-        default_root_state[:, :3] = self.valid_spawns[env_ids]
-        default_root_state[:, 2] += 0.065
         self.robot.write_root_state_to_sim(default_root_state, env_ids)
 
-
         targets = default_root_state[:, :3].clone()
-        targets[:, 0] += 1.5
-        targets[:, 1] += 0.5
-        targets[:, 2] = self.terrainManager._heightmap_manager.get_height_at(targets[:, :2]) 
-        targets[:, 2] += 0.1
+        half_span = math.pi/6         # 30°
+        angles    = torch.empty(len(env_ids), device=self.gpu).uniform_(-half_span, half_span)
+        targets[:, 0] = targets[:, 0] + self.marker_radius * torch.cos(angles)
+        targets[:, 1] = targets[:, 1] + self.marker_radius * torch.sin(angles)   
+        targets[:, 2] += 0.15
 
+        new_goal_state = self.goal_marker.data.default_root_state[env_ids].clone()
+        new_goal_state[:, :3] = targets
+        self.goal_marker.write_root_state_to_sim(new_goal_state, env_ids)
 
-        # targets = torch.zeros(self.cfg.scene.num_envs, 3, device=self.gpu)
-        # angles = torch.rand(len(env_ids), device=self.gpu) * 2 * math.pi
-        # root_pos = default_root_state[:, :3]  # Shape [N_envs, 3]
-        #root_pos[:,2] += 0.5
-
-
-        # targets[:, 0] = root_pos[:, 0] + self.marker_radius * torch.cos(angles)
-        # targets[:, 1] = root_pos[:, 1] + self.marker_radius * torch.sin(angles)
-
-        # targets[:, 0] = root_pos[:, 0] + self.marker_radius * torch.cos(angles)
-        # targets[:, 1] = root_pos[:, 1] + self.marker_radius * torch.sin(angles)       
-        # targets[:, 2] = self.terrainManager._heightmap_manager.get_height_at(targets[:, :2]) 
-        # targets[:, 2] += 0.5
-
-        # while True:
-
-        #     invalid_ids, num_bad = self.terrainManager.check_if_target_is_valid(
-        #         env_ids, targets, device=self.gpu
-        #     )
-
-        #     if num_bad == 0:
-        #         break
-
-        #     # Re-sample the environments that need to be reset, identified by invalid_ids
-        #     new_angles = torch.rand(num_bad, device=self.gpu) * 2 * math.pi
-        #     new_targets = targets[invalid_ids]
-        #     original_root = root_pos[invalid_ids]
-        #     new_targets[:, 0] = original_root[:, 0] + self.marker_radius * torch.cos(new_angles)
-        #     new_targets[:, 1] = original_root[:, 1] + self.marker_radius * torch.sin(new_angles)
-        #     new_targets[:, 2] = original_root[:, 2]
-        #     targets[invalid_ids] = new_targets
-
-
-        self.target_spawns[env_ids] = targets
         self._visualize_markers()
-
-        # goal_root_state = self.goal_marker.data.default_root_state[env_ids].clone()
-        # goal_root_state[:, :3] = targets[env_ids]
-        # self.goal_marker.write_root_state_to_sim(goal_root_state, env_ids)
-
 

@@ -1,3 +1,25 @@
+    # def compute(self, inputs, role):
+
+    #     obs = unflatten_tensorized_space(self.observation_space, inputs["states"])
+    #     obs = obs.permute(0, 1, 4, 2, 3)
+    #     N, T, C, H, W = obs.shape
+    #     obs = obs.contiguous().view(N * T, C, H, W)
+    #     obs = obs.to(self.device)
+
+    #     feats = self.features_extractor(obs)
+    #     feats = feats.view(N, T*self.feat_dim)
+    #     #import pdb; pdb.set_trace()
+    #     shared = self.fc1(feats)
+
+    #     if role == "policy":
+    #         mean_action = self.mean_layer(shared)
+    #         return mean_action, self.log_std_parameter, {}
+
+    #     elif role == "value":
+    #         value = self.value_layer(shared)
+    #         return value, {}
+
+
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
@@ -176,6 +198,28 @@ class Shared(GaussianMixin, DeterministicMixin, Model):
             return GaussianMixin.act(self, inputs, role)
         elif role == "value":
             return DeterministicMixin.act(self, inputs, role)
+        
+
+    # def compute(self, inputs, role):
+
+    #     obs = unflatten_tensorized_space(self.observation_space, inputs["states"])
+    #     obs = obs.permute(0, 1, 4, 2, 3)
+    #     N, T, C, H, W = obs.shape
+    #     obs = obs.contiguous().view(N * T, C, H, W)
+    #     obs = obs.to(self.device)
+
+    #     feats = self.features_extractor(obs)
+    #     feats = feats.view(N, T*self.feat_dim)
+    #     #import pdb; pdb.set_trace()
+    #     shared = self.fc1(feats)
+
+    #     if role == "policy":
+    #         mean_action = self.mean_layer(shared)
+    #         return mean_action, self.log_std_parameter, {}
+
+    #     elif role == "value":
+    #         value = self.value_layer(shared)
+    #         return value, {}
 
     def compute(self, inputs, role):
 
@@ -298,7 +342,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     device = env.device
 
-
     # instantiate a memory as rollout buffer (any memory can be used for this)
     memory = RandomMemory(memory_size=24, num_envs=env.num_envs, device=device)
 
@@ -340,7 +383,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # logging to TensorBoard and write checkpoints (in timesteps)
     cfg["experiment"]["write_interval"] = 60
     cfg["experiment"]["checkpoint_interval"] = 600
-    cfg["experiment"]["directory"] = "runs/torch/Isaac-Velocity-Anymal-C-v0"
+    cfg["experiment"]["directory"] = "runs/torch/Isaac-Jackal-v0"
 
     agent = PPO(models=models,
                 memory=memory,
