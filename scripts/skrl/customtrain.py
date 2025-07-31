@@ -313,16 +313,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = multi_agent_to_single_agent(env)
 
     # wrap for video recording
-    if args_cli.video:
-        video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "train"),
-            "step_trigger": lambda step: step % args_cli.video_interval == 0,
-            "video_length": args_cli.video_length,
-            "disable_logger": True,
-        }
-        print("[INFO] Recording videos during training.")
-        print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+    # if args_cli.video:
+    #     video_kwargs = {
+    #         "video_folder": os.path.join(log_dir, "videos", "train"),
+    #         "step_trigger": lambda step: step % args_cli.video_interval == 0,
+    #         "video_length": args_cli.video_length,
+    #         "disable_logger": True,
+    #     }
+    #     print("[INFO] Recording videos during training.")
+    #     print_dict(video_kwargs, nesting=4)
+    #     env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for skrl
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`

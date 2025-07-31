@@ -57,6 +57,7 @@ def define_markers() -> VisualizationMarkers:
     return VisualizationMarkers(cfg=marker_cfg)
 
 
+#source /home/bchien1/IsaacSim/_build/linux-x86_64/release/setup_conda_env.sh
 
 class JackalEnvN(DirectRLEnv):
     cfg: JackalEnvNCfg
@@ -107,7 +108,7 @@ class JackalEnvN(DirectRLEnv):
         # Add sensors and articulations to scene
         self.scene.articulations["robot"] = self.robot
         self.scene.rigid_objects["goal_marker"] = self.goal_marker
-        self.scene.sensors["tiled_camera"] = self.robot_camera
+        self.scene.sensors["robot_camera"] = self.robot_camera
 
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
@@ -115,7 +116,7 @@ class JackalEnvN(DirectRLEnv):
 
         # Arrow Markers Initialization (For Debugging/Visualization Purposes)
         self.arrows = define_markers()
-        self.marker_radius = 1.5
+        self.marker_radius = 3.0
 
         self.up_dir = torch.tensor([0.0, 0.0, 1.0]).cuda()  
         self.yaws = torch.zeros((self.cfg.scene.num_envs, 1)).cuda()
@@ -221,7 +222,7 @@ class JackalEnvN(DirectRLEnv):
         self.robot.write_root_state_to_sim(default_root_state, env_ids)
 
         targets = default_root_state[:, :3].clone()
-        half_span = math.pi/6         # 30°
+        half_span = math.pi/6.0        # 30°
         angles    = torch.empty(len(env_ids), device=self.gpu).uniform_(-half_span, half_span)
         targets[:, 0] = targets[:, 0] + self.marker_radius * torch.cos(angles)
         targets[:, 1] = targets[:, 1] + self.marker_radius * torch.sin(angles)   
