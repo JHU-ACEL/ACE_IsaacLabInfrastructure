@@ -21,9 +21,9 @@ from isaaclab.terrains import TerrainImporterCfg
 
 
 @configclass
-class JackalEnvNCfg(DirectRLEnvCfg):
+class JackalGridEnvCfg(DirectRLEnvCfg):
 
-    episode_length_s = 15.0
+    episode_length_s = 20.0
 
     # simulation
     decimation = 2
@@ -39,8 +39,8 @@ class JackalEnvNCfg(DirectRLEnvCfg):
         #offset=TiledCameraCfg.OffsetCfg(pos=(-5.0, 0.0, 2.0), rot=(1.0, 0.0, 0.0, 0.0), convention="world"),
         data_types=["rgb"],
         spawn=None,
-        width=224,
-        height=224,
+        width=64,
+        height=64,
     )
 
 
@@ -51,8 +51,7 @@ class JackalEnvNCfg(DirectRLEnvCfg):
     #observation_space = [tiled_camera.height, tiled_camera.width, 3]
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=100, env_spacing=50.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=50.0, replicate_physics=True)
 
-
-    goal_cfg = RigidObjectCfg(prim_path="/World/envs/env_.*/marker", spawn=sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/red_block.usd", scale = (7.0, 7.0, 12.0)))
     dof_names = ['front_left_wheel_joint', 'front_right_wheel_joint', 'rear_left_wheel_joint', 'rear_right_wheel_joint']
+

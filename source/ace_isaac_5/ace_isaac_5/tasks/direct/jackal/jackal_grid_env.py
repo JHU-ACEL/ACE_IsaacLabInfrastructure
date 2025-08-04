@@ -21,20 +21,32 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 import isaaclab.utils.math as math_utils
 
 
-from .jackal_env_n_cfg import JackalEnvNCfg
+from .jackal_grid_env_cfg import JackalGridEnvCfg
 
 from .terrain_utilities.terrain_utils import TerrainManager
 
 
-SPHERE_MARKER_CFG = VisualizationMarkersCfg(
+# SPHERE_MARKER_CFG = VisualizationMarkersCfg(
+#     markers={
+#         "sphere": sim_utils.SphereCfg(
+#             radius=0.2,
+#             visual_material=sim_utils.PreviewSurfaceCfg(
+#                 diffuse_color=(0.0, 1.0, 1.0)),
+#         ),
+#     }
+# )
+
+
+GOAL_MARKER_CFG = VisualizationMarkersCfg(
     markers={
-        "sphere": sim_utils.SphereCfg(
-            radius=0.2,
+        "sphere": sim_utils.CuboidCfg(
+            size=(0.25, 0.25, 1.0),
             visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.0, 1.0, 1.0)),
+                diffuse_color=(1.0, 0.0, 0.0)),
         ),
     }
 )
+
 
 
 def define_markers() -> VisualizationMarkers:
@@ -59,20 +71,68 @@ def define_markers() -> VisualizationMarkers:
 
 #source /home/bchien1/IsaacSim/_build/linux-x86_64/release/setup_conda_env.sh
 
-class JackalEnvN(DirectRLEnv):
-    cfg: JackalEnvNCfg
+class JackalGridEnv(DirectRLEnv):
+    cfg: JackalGridEnvCfg
 
-    def __init__(self, cfg: JackalEnvNCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: JackalGridEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         self.dof_idx, _ = self.robot.find_joints(self.cfg.dof_names)
         print(self.dof_idx)
 
+    def _setup_scene(self):
 
+        # Device
+        self.gpu = "cuda:0"
+
+        # Scene Assets and Sensors
+        self.robot = Articulation(self.cfg.robot_cfg)
+        self.robot_camera = TiledCamera(self.cfg.tiled_camera)
+
+        # add ground plane
+        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg(size=(10000.0, 10000.0)))
+
+        # clone and replicate
+        self.scene.clone_environments(copy_from_source=False)
+
+        # Add sensors and articulations to scene
+        self.scene.articulations["robot"] = self.robot
+        self.scene.sensors["robot_camera"] = self.robot_camera
+
+        # add lights
+        light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
+        light_cfg.func("/World/Light", light_cfg)
+
+        # Arrow Markers Initialization (For Debugging/Visualization Purposes)
+        self.arrows = define_markers()
+        self.up_dir = torch.tensor([0.0, 0.0, 1.0]).cuda()  
+        self.yaws = torch.zeros((self.cfg.scene.num_envs, 1)).cuda()
+        self.commands = torch.zeros((self.cfg.scene.num_envs, 3)).cuda()
+
+        self.marker_locations = torch.zeros((self.cfg.scene.num_envs, 3)).cuda()
+        self.marker_offset = torch.zeros((self.cfg.scene.num_envs, 3), device=self.gpu)
+        self.marker_offset[:, 2] = 0.5
+
+        self.forward_marker_orientations = torch.zeros((self.cfg.scene.num_envs, 4), device=self.gpu)
+        self.command_marker_orientations = torch.zeros((self.cfg.scene.num_envs, 4), device=self.gpu)
+        self.up_dir = torch.tensor([0.0, 0.0, 1.0]).cuda()  
+        self.yaws = torch.zeros((self.cfg.scene.num_envs, 1)).cuda()
+
+        # Goal Markers Initialization
+        self.target_spawns = torch.zeros(self.cfg.scene.num_envs, 3, device=self.gpu)
+        cube_cfg = GOAL_MARKER_CFG.copy()
+        cube_cfg.prim_path = "/Visuals/Command/position_goal"
+        self.goal_markers = VisualizationMarkers(cfg=cube_cfg)
+        self.goal_markers.set_visibility(True)
+        self.goal_radius = 3.0
+
+        # Data structure to store observation history
+        self.history_len = 5
+        self._camera_hist: torch.Tensor | None = None
 
     def _get_goal_vec_normalized(self):
     
-        goal_vec = self.goal_marker.data.root_pos_w - self.robot.data.root_pos_w  
+        goal_vec = self.target_spawns - self.robot.data.root_pos_w  
         return goal_vec/torch.linalg.norm(goal_vec, dim=-1, keepdim=True)
 
 
@@ -89,53 +149,6 @@ class JackalEnvN(DirectRLEnv):
         self.yaws = torch.atan(ratio).reshape(-1,1) + offsets.reshape(-1,1)
 
 
-    def _setup_scene(self):
-
-        # Device
-        self.gpu = "cuda:0"
-
-        # Scene Assets and Sensors
-        self.robot = Articulation(self.cfg.robot_cfg)
-        self.goal_marker = RigidObject(self.cfg.goal_cfg)
-        self.robot_camera = TiledCamera(self.cfg.tiled_camera)
-
-        # add ground plane
-        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg(size=(10000.0, 10000.0)))
-
-        # clone and replicate
-        self.scene.clone_environments(copy_from_source=False)
-
-        # Add sensors and articulations to scene
-        self.scene.articulations["robot"] = self.robot
-        self.scene.rigid_objects["goal_marker"] = self.goal_marker
-        self.scene.sensors["robot_camera"] = self.robot_camera
-
-        # add lights
-        light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
-        light_cfg.func("/World/Light", light_cfg)
-
-        # Arrow Markers Initialization (For Debugging/Visualization Purposes)
-        self.arrows = define_markers()
-        self.marker_radius = 3.0
-
-        self.up_dir = torch.tensor([0.0, 0.0, 1.0]).cuda()  
-        self.yaws = torch.zeros((self.cfg.scene.num_envs, 1)).cuda()
-        self.commands = torch.zeros((self.cfg.scene.num_envs, 3)).cuda()
-
-        self.marker_locations = torch.zeros((self.cfg.scene.num_envs, 3)).cuda()
-        self.marker_offset = torch.zeros((self.cfg.scene.num_envs, 3), device=self.gpu)
-        self.marker_offset[:, 2] = 0.5
-
-        self.forward_marker_orientations = torch.zeros((self.cfg.scene.num_envs, 4), device=self.gpu)
-        self.command_marker_orientations = torch.zeros((self.cfg.scene.num_envs, 4), device=self.gpu)
-        self.up_dir = torch.tensor([0.0, 0.0, 1.0]).cuda()  
-        self.yaws = torch.zeros((self.cfg.scene.num_envs, 1)).cuda()
-
-        # Data structure to store observation history
-        self.history_len = 5
-        self._camera_hist: torch.Tensor | None = None
-
-
     def _visualize_markers(self):
         
         all_envs = torch.arange(self.cfg.scene.num_envs)
@@ -150,11 +163,11 @@ class JackalEnvN(DirectRLEnv):
         rots = torch.vstack((self.forward_marker_orientations, self.command_marker_orientations))
 
         self.arrows.visualize(loc, rots, marker_indices=indices)
-        #self.sphere_marker.visualize(self.target_spawns, marker_indices=indices)
+        self.goal_markers.visualize(self.target_spawns, marker_indices=indices)
 
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        self.actions = 2*actions.clone()
+        self.actions = actions.clone()
         self._visualize_markers()
 
     def _apply_action(self) -> None:
@@ -183,19 +196,26 @@ class JackalEnvN(DirectRLEnv):
 
         return {"policy": self._camera_hist.clone()}
 
-    def _get_rewards(self) -> torch.Tensor:
 
-        # alignment
+    def _get_rewards(self) -> torch.Tensor:
+        # recompute goal vector right here
+        goal_vec = self._get_goal_vec_normalized()  
         forward_reward = self.robot.data.root_com_lin_vel_b[:,0].reshape(-1,1)
-        forwards = math_utils.quat_apply(self.robot.data.root_link_quat_w, self.robot.data.FORWARD_VEC_B)
-        alignment_reward = torch.sum(forwards * self.commands, dim=-1, keepdim=True)
+        forwards = math_utils.quat_apply(self.robot.data.root_link_quat_w,
+                                        self.robot.data.FORWARD_VEC_B)
+        alignment_reward = torch.sum(forwards * goal_vec, dim=-1, keepdim=True)
+
+        base_reward = forward_reward * torch.exp(5 * alignment_reward)
 
         # arrival bonus
-        goal_vec = self._get_goal_vec_normalized()
-        dist = torch.linalg.norm(goal_vec, dim=-1, keepdim=True)  # (N,1)
-        arrived = (dist < 0.75).to(torch.float32) * 2.0
+        dist = torch.linalg.norm(
+            self.target_spawns - self.robot.data.root_pos_w, dim=-1, keepdim=True
+        )
+        arrived_mask = dist < 0.5                                                   # BoolTensor (N,1)
 
-        total_reward = forward_reward*torch.exp(5*alignment_reward)# + arrived 
+        arrival_bonus = arrived_mask.to(torch.float32) * (1.0 * base_reward)
+
+        total_reward = base_reward + arrival_bonus 
 
         return total_reward
 
@@ -204,11 +224,18 @@ class JackalEnvN(DirectRLEnv):
 
         time_out = self.episode_length_buf >= (self.max_episode_length - 1)
 
-        # goal_vec = self._get_goal_vec_normalized()
-        # dist = torch.linalg.norm(goal_vec, dim=-1)      
-        # arrived = dist < 0.1                                
+        # 2) compute distance to goal for each env
+        #    target_spawns is (N,3), root_pos_w is (N,3)
+        dist_to_goal = torch.linalg.norm(
+            self.target_spawns - self.robot.data.root_pos_w, dim=-1
+        )
 
-        return False, time_out
+        reached = dist_to_goal < 0.5
+
+        # if reached:
+        #     print("GOAL REACHED: TIMEOUT HERE")
+
+        return reached, time_out
 
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
@@ -218,19 +245,15 @@ class JackalEnvN(DirectRLEnv):
 
         default_root_state = self.robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
-
         self.robot.write_root_state_to_sim(default_root_state, env_ids)
 
         targets = default_root_state[:, :3].clone()
-        half_span = math.pi/6.0        # 30°
-        angles    = torch.empty(len(env_ids), device=self.gpu).uniform_(-half_span, half_span)
-        targets[:, 0] = targets[:, 0] + self.marker_radius * torch.cos(angles)
-        targets[:, 1] = targets[:, 1] + self.marker_radius * torch.sin(angles)   
-        targets[:, 2] += 0.15
-
-        new_goal_state = self.goal_marker.data.default_root_state[env_ids].clone()
-        new_goal_state[:, :3] = targets
-        self.goal_marker.write_root_state_to_sim(new_goal_state, env_ids)
+        half_span = math.pi/6.0     # 30°
+        angles = torch.empty(len(env_ids), device=self.gpu).uniform_(-half_span, half_span)
+        targets[:, 0] = targets[:, 0] + self.goal_radius * torch.cos(angles)
+        targets[:, 1] = targets[:, 1] + self.goal_radius * torch.sin(angles)   
+        #targets[:, 2] += 0.15
+        self.target_spawns[env_ids] = targets
 
         self._visualize_markers()
 
