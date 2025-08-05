@@ -282,7 +282,7 @@ def main():
                 device=device)
     
 
-    agent.load("models_of_interest/grid_world_nav/best_agent.pt")
+    agent.load("/home/bchien1/ACE_IsaacLabInfrastructure/runs/torch/Isaac-Jackal-v0/25-08-05_18-31-30-826002_PPO/checkpoints/best_agent.pt")
     
     # configure and instantiate the RL trainer
     cfg_trainer = {"timesteps": 32000, "headless": True}

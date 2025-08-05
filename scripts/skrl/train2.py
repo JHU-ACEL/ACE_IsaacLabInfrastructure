@@ -297,10 +297,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 observation_space=env.observation_space,
                 action_space=env.action_space,
                 device=device)
+    agent.load("/home/bchien1/ACE_IsaacLabInfrastructure/runs/torch/Isaac-Jackal-v0/25-08-05_18-06-03-349962_PPO/checkpoints/best_agent.pt")
 
 
     # configure and instantiate the RL trainer
-    cfg_trainer = {"timesteps": 32000, "headless": True}
+    cfg_trainer = {"timesteps": 18000, "headless": True}
     trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
     # start training

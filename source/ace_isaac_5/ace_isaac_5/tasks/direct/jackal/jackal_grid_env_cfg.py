@@ -23,7 +23,7 @@ from isaaclab.terrains import TerrainImporterCfg
 @configclass
 class JackalGridEnvCfg(DirectRLEnvCfg):
 
-    episode_length_s = 20.0
+    episode_length_s = 100.0
 
     # simulation
     decimation = 2

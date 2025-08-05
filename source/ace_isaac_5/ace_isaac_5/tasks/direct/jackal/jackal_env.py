@@ -26,15 +26,16 @@ from .jackal_env_cfg import JackalEnvCfg
 from .terrain_utilities.terrain_utils import TerrainManager
 
 
-SPHERE_MARKER_CFG = VisualizationMarkersCfg(
+GOAL_MARKER_CFG = VisualizationMarkersCfg(
     markers={
-        "sphere": sim_utils.SphereCfg(
-            radius=0.2,
+        "sphere": sim_utils.CuboidCfg(
+            size=(0.25, 0.25, 1.0),
             visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.0, 1.0, 1.0)),
+                diffuse_color=(1.0, 0.0, 0.0)),
         ),
     }
 )
+
 
 
 def define_markers() -> VisualizationMarkers:
@@ -74,7 +75,6 @@ class JackalEnv(DirectRLEnv):
 
         # Scene Assets and Sensors
         self.robot = Articulation(self.cfg.robot_cfg)
-        self.goal_marker = RigidObject(self.cfg.goal_cfg)
         self.robot_camera = TiledCamera(self.cfg.tiled_camera)
 
         # clone and replicate
@@ -82,7 +82,6 @@ class JackalEnv(DirectRLEnv):
 
         # Update the scene's attributes
         self.scene.articulations["robot"] = self.robot
-        self.scene.rigid_objects["goal_marker"] = self.goal_marker
         self.scene.sensors["tiled_camera"] = self.robot_camera
 
         # add lights

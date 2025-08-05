@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import random
 import torch
 from collections.abc import Sequence
 import numpy as np
@@ -124,7 +125,7 @@ class JackalGridEnv(DirectRLEnv):
         cube_cfg.prim_path = "/Visuals/Command/position_goal"
         self.goal_markers = VisualizationMarkers(cfg=cube_cfg)
         self.goal_markers.set_visibility(True)
-        self.goal_radius = 3.0
+        self.goal_radius = 5.0
 
         # Data structure to store observation history
         self.history_len = 5
@@ -198,34 +199,34 @@ class JackalGridEnv(DirectRLEnv):
 
 
     def _get_rewards(self) -> torch.Tensor:
-        # recompute goal vector right here
+
         goal_vec = self._get_goal_vec_normalized()  
-        forward_reward = self.robot.data.root_com_lin_vel_b[:,0].reshape(-1,1)
         forwards = math_utils.quat_apply(self.robot.data.root_link_quat_w,
                                         self.robot.data.FORWARD_VEC_B)
-        alignment_reward = torch.sum(forwards * goal_vec, dim=-1, keepdim=True)
+        alignment = torch.sum(forwards * goal_vec, dim=-1, keepdim=True)
+        angle = torch.acos(alignment.clamp(-1.0, 1.0))
 
-        base_reward = forward_reward * torch.exp(5 * alignment_reward)
+        vel = self.robot.data.root_com_lin_vel_b[:,0].reshape(-1,1)
+        threshold = math.pi / 9.0
+        mask = (angle <= threshold).to(torch.float32)                               # (N,1)
+        forward_reward = vel * mask
+
+        base_reward = forward_reward*torch.exp(5*alignment)
 
         # arrival bonus
         dist = torch.linalg.norm(
             self.target_spawns - self.robot.data.root_pos_w, dim=-1, keepdim=True
         )
         arrived_mask = dist < 0.5                                                   # BoolTensor (N,1)
-
         arrival_bonus = arrived_mask.to(torch.float32) * (1.0 * base_reward)
-
-        total_reward = base_reward + arrival_bonus 
+        total_reward = base_reward + arrival_bonus
 
         return total_reward
-
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
 
         time_out = self.episode_length_buf >= (self.max_episode_length - 1)
 
-        # 2) compute distance to goal for each env
-        #    target_spawns is (N,3), root_pos_w is (N,3)
         dist_to_goal = torch.linalg.norm(
             self.target_spawns - self.robot.data.root_pos_w, dim=-1
         )
@@ -246,13 +247,34 @@ class JackalGridEnv(DirectRLEnv):
         default_root_state = self.robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
         self.robot.write_root_state_to_sim(default_root_state, env_ids)
+    
+        # Have half_span range from math.pi/7.0 to math.pi/4.0
+        #half_span = math.pi/4.0     
+        # half_span = random.uniform(math.pi/7.0, math.pi/4.0)
+        # #
+
+        # angles = torch.empty(len(env_ids), device=self.gpu).uniform_(-half_span, half_span)
+
+        N = len(env_ids)
+        device = self.gpu
+        # 1) sample absolute angles in [π/6, π/4]
+        min_ang, max_ang = math.pi/4.0, math.pi/2.0
+        mags = torch.empty(N, device=device).uniform_(min_ang, max_ang)
+
+        # 2) pick random sign ±1 for each env
+        signs = torch.where(torch.rand(N, device=device) < 0.5,
+                            1.0,  # positive branch
+                        -1.0)  # negative branch
+
+        # 3) combine
+        angles = mags * signs  # shape (N,)
+
+        # half_span = math.pi/8.0     
+        # angles = torch.empty(len(env_ids), device=self.gpu).uniform_(half_span, half_span)
 
         targets = default_root_state[:, :3].clone()
-        half_span = math.pi/6.0     # 30°
-        angles = torch.empty(len(env_ids), device=self.gpu).uniform_(-half_span, half_span)
         targets[:, 0] = targets[:, 0] + self.goal_radius * torch.cos(angles)
         targets[:, 1] = targets[:, 1] + self.goal_radius * torch.sin(angles)   
-        #targets[:, 2] += 0.15
         self.target_spawns[env_ids] = targets
 
         self._visualize_markers()
