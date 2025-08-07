@@ -200,26 +200,34 @@ class JackalGridEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
 
-        goal_vec = self._get_goal_vec_normalized()  
+        goal_vec = self._get_goal_vec_normalized() # torch.Size([N, 3]) 
+         
         forwards = math_utils.quat_apply(self.robot.data.root_link_quat_w,
-                                        self.robot.data.FORWARD_VEC_B)
-        alignment = torch.sum(forwards * goal_vec, dim=-1, keepdim=True)
-        angle = torch.acos(alignment.clamp(-1.0, 1.0))
+                                        self.robot.data.FORWARD_VEC_B) # torch.Size([N, 3]) 
+        
+        alignment = torch.sum(forwards * goal_vec, dim=-1, keepdim=True) # torch.Size([N, 1]), batchwise dot product 
+                                                                        # between the vectors in the tensors goal_vec and forwards
+        angle = torch.acos(alignment.clamp(-1.0, 1.0)) # torch.Size([N, 1]) 
+        # Since the vectors are unit vectors, the dot product is equal to cos(theta), so take the inverse cosine
 
-        vel = self.robot.data.root_com_lin_vel_b[:,0].reshape(-1,1)
+        vel = self.robot.data.root_com_lin_vel_b[:,0].reshape(-1,1) # torch.Size([N, 1])
         threshold = math.pi / 9.0
-        mask = (angle <= threshold).to(torch.float32)                               # (N,1)
-        forward_reward = vel * mask
+        mask = (angle <= threshold).to(torch.float32) # torch.Size([N, 1])
+        forward_reward = vel * mask # torch.Size([N, 1])
 
-        base_reward = forward_reward*torch.exp(5*alignment)
+        base_reward = forward_reward*torch.exp(5*alignment) # torch.Size([N, 1])
 
         # arrival bonus
         dist = torch.linalg.norm(
             self.target_spawns - self.robot.data.root_pos_w, dim=-1, keepdim=True
-        )
+        ) # torch.Size([N, 1])
+
+
         arrived_mask = dist < 0.5                                                   # BoolTensor (N,1)
-        arrival_bonus = arrived_mask.to(torch.float32) * (1.0 * base_reward)
-        total_reward = base_reward + arrival_bonus
+        arrival_bonus = arrived_mask.to(torch.float32) * (1.0 * base_reward)        # torch.Size([N, 1])
+        total_reward = base_reward + arrival_bonus                                  # torch.Size([N, 1])
+
+        import pdb; pdb.set_trace()
 
         return total_reward
 
