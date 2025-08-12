@@ -125,7 +125,7 @@ class JackalGridEnv(DirectRLEnv):
         cube_cfg.prim_path = "/Visuals/Command/position_goal"
         self.goal_markers = VisualizationMarkers(cfg=cube_cfg)
         self.goal_markers.set_visibility(True)
-        self.goal_radius = 5.0
+        self.goal_radius = 4.0
 
         # Data structure to store observation history
         self.history_len = 5
@@ -227,8 +227,6 @@ class JackalGridEnv(DirectRLEnv):
         arrival_bonus = arrived_mask.to(torch.float32) * (1.0 * base_reward)        # torch.Size([N, 1])
         total_reward = base_reward + arrival_bonus                                  # torch.Size([N, 1])
 
-        import pdb; pdb.set_trace()
-
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -256,34 +254,27 @@ class JackalGridEnv(DirectRLEnv):
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
         self.robot.write_root_state_to_sim(default_root_state, env_ids)
     
-        # Have half_span range from math.pi/7.0 to math.pi/4.0
-        #half_span = math.pi/4.0     
-        # half_span = random.uniform(math.pi/7.0, math.pi/4.0)
-        # #
+        # N = len(env_ids)
+        # device = self.gpu
+        # # 1) sample absolute angles in [π/6, π/4]
+        # min_ang, max_ang = math.pi/8.0, math.pi/7.0
+        # mags = torch.empty(N, device=device).uniform_(min_ang, max_ang)
 
-        # angles = torch.empty(len(env_ids), device=self.gpu).uniform_(-half_span, half_span)
+        # # 2) pick random sign ±1 for each env
+        # signs = torch.where(torch.rand(N, device=device) < 0.5,
+        #                     1.0,  # positive branch
+        #                 -1.0)  # negative branch
 
-        N = len(env_ids)
-        device = self.gpu
-        # 1) sample absolute angles in [π/6, π/4]
-        min_ang, max_ang = math.pi/4.0, math.pi/2.0
-        mags = torch.empty(N, device=device).uniform_(min_ang, max_ang)
+        # # 3) combine
+        # angles = mags * signs  # shape (N,)
 
-        # 2) pick random sign ±1 for each env
-        signs = torch.where(torch.rand(N, device=device) < 0.5,
-                            1.0,  # positive branch
-                        -1.0)  # negative branch
-
-        # 3) combine
-        angles = mags * signs  # shape (N,)
-
-        # half_span = math.pi/8.0     
-        # angles = torch.empty(len(env_ids), device=self.gpu).uniform_(half_span, half_span)
+        half_span = -math.pi/2.0     
+        angles = torch.empty(len(env_ids), device=self.gpu).uniform_(half_span, half_span)
 
         targets = default_root_state[:, :3].clone()
         targets[:, 0] = targets[:, 0] + self.goal_radius * torch.cos(angles)
         targets[:, 1] = targets[:, 1] + self.goal_radius * torch.sin(angles)   
-        self.target_spawns[env_ids] = targets
 
+        self.target_spawns[env_ids] = targets
         self._visualize_markers()
 

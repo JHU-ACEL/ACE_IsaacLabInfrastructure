@@ -136,6 +136,7 @@ class Shared(GaussianMixin, DeterministicMixin, Model):
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
             nn.ReLU(),
+            nn.AdaptiveAvgPool2d((2, 2)),
             nn.Flatten()
         )
 
@@ -282,7 +283,7 @@ def main():
                 device=device)
     
 
-    agent.load("/home/bchien1/ACE_IsaacLabInfrastructure/runs/torch/Isaac-Jackal-v0/25-08-05_18-31-30-826002_PPO/checkpoints/best_agent.pt")
+    agent.load("/home/bchien1/ACE_IsaacLabInfrastructure/models_of_interest/grid_world_nav_256/best_agent.pt")
     
     # configure and instantiate the RL trainer
     cfg_trainer = {"timesteps": 32000, "headless": True}

@@ -28,14 +28,14 @@ class MarsTerrainSceneCfg(InteractiveSceneCfg):
     """
     # Hidden Terrain (merged terrain of ground and obstacles) for raycaster.
     # This is done because the raycaster doesn't work with multiple meshes
-    hidden_terrain = AssetBaseCfg(
-        prim_path="/World/terrain/hidden_terrain",
-        spawn=sim_utils.UsdFileCfg(
-            visible=False,
-            usd_path="source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_merged.usd"
-        ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
-    )
+    # hidden_terrain = AssetBaseCfg(
+    #     prim_path="/World/terrain/hidden_terrain",
+    #     spawn=sim_utils.UsdFileCfg(
+    #         visible=False,
+    #         usd_path="source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_merged.usd"
+    #     ),
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
+    # )
 
     # Obstacles
     # obstacles = AssetBaseCfg(
@@ -46,19 +46,20 @@ class MarsTerrainSceneCfg(InteractiveSceneCfg):
     #     ),
     #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
     # )
+    
 
     # Ground Terrain
     terrain = TerrainImporterCfg(
         prim_path="/World/terrain",
         terrain_type="usd",
-        collision_group=-1,
-        usd_path="/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_only.usd"
+        usd_path="/home/bchien1/ACE_IsaacLabInfrastructure/source/ace_isaac_5/ace_isaac_5/mars_terrain/terrain_only.usd",
+        debug_vis=True
     )
 
 @configclass
 class JackalEnvCfg(DirectRLEnvCfg):
 
-    episode_length_s = 10.0
+    episode_length_s = 200.0
 
     # simulation
     decimation = 2
@@ -67,7 +68,6 @@ class JackalEnvCfg(DirectRLEnvCfg):
     # robot(s)
     robot_cfg: ArticulationCfg = JACKAL_CONFIG.replace(prim_path="/World/envs/env_.*/Robot")
 
-    
     # sensors
     tiled_camera: TiledCameraCfg = TiledCameraCfg(
         prim_path="/World/envs/env_.*/Robot/base_link/bumblebee_stereo_camera_frame/bumblebee_stereo_right_frame/bumblebee_stereo_right_camera",
@@ -86,8 +86,6 @@ class JackalEnvCfg(DirectRLEnvCfg):
     #observation_space = [tiled_camera.height, tiled_camera.width, 3]
 
     # scene
-    scene: MarsTerrainSceneCfg = MarsTerrainSceneCfg(num_envs=1, env_spacing=1.0, replicate_physics=True)
-
-    goal_cfg = RigidObjectCfg(prim_path="/World/envs/env_.*/marker", spawn=sim_utils.UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/red_block.usd", scale = (7.0, 7.0, 12.0)))
+    scene: MarsTerrainSceneCfg = MarsTerrainSceneCfg(num_envs=19, env_spacing=0.0, replicate_physics=True)
 
     dof_names = ['front_left_wheel_joint', 'front_right_wheel_joint', 'rear_left_wheel_joint', 'rear_right_wheel_joint']
